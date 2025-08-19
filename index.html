@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Beat the Bookie</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#000000;
+      --gold: rgb(179,167,119);
+      --goldA: rgba(179,167,119,0.35);
+      --panel:#111;
+      --input:#222;
+      --text:#e8e8e8;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; background:var(--bg); color:var(--gold); font-family:'Roboto',sans-serif;
+    }
+    h1{ margin:0; padding:16px 12px; text-align:center; color:var(--gold); }
+    .container{ display:flex; gap:12px; padding:12px; flex-wrap:wrap; justify-content:center; }
+    .card{
+      background:var(--panel); border:1px solid var(--gold);
+      border-radius:12px; padding:12px; width:100%; max-width:360px; min-width:260px;
+      box-shadow:0 0 12px var(--goldA);
+    }
+    .card h3{ margin:0 0 8px 0; color:var(--text); font-weight:700; }
+    label{ display:block; font-size:14px; margin-top:8px; color:var(--gold); }
+    input[type="number"]{
+      width:100%; padding:10px; margin-top:4px; border:1px solid var(--gold);
+      border-radius:8px; background:var(--input); color:#fff; text-align:center; font-size:16px;
+    }
+    .actions{ display:flex; gap:10px; padding:0 12px 12px; justify-content:center; flex-wrap:wrap; }
+    button{
+      background:var(--gold); color:#000; border:none; padding:12px 16px; border-radius:12px;
+      cursor:pointer; font-weight:700;
+    }
+    button:hover{ filter:brightness(1.05); }
+    .results{
+      margin:12px; padding:12px; border:1px solid var(--gold); border-radius:12px; background:var(--panel);
+      box-shadow:0 0 12px var(--goldA);
+    }
+    .metrics{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+    .metric{
+      min-width:160px; padding:10px; border:1px solid var(--gold); border-radius:10px; text-align:center;
+      background:#0f0f0f;
+    }
+    .metric .label{ color:var(--gold); font-size:12px; }
+    .metric .value{ color:#fff; font-size:18px; font-weight:700; margin-top:4px; }
+    table{ width:100%; border-collapse:collapse; margin-top:12px; }
+    th,td{ border:1px solid var(--gold); padding:8px; text-align:center; color:#fff; }
+    th{ color:#000; background:var(--gold); }
+    .foot{ margin-top:8px; color:var(--text); font-size:13px; opacity:.85; text-align:center; }
+  </style>
+</head>
+<body>
+  <h1>Beat the Bookie</h1>
+
+  <div class="container">
+    <div class="card">
+      <h3>Odd 1</h3>
+      <label>Odd</label>
+      <input type="number" id="odd1" step="0.01" placeholder="bijv. 1.65">
+      <label>Stake (€)</label>
+      <input type="number" id="stake1" step="0.01" placeholder="0">
+      <label>Free Bet (€)</label>
+      <input type="number" id="fb1" step="0.01" placeholder="0">
+    </div>
+
+    <div class="card">
+      <h3>Odd X</h3>
+      <label>Odd</label>
+      <input type="number" id="oddX" step="0.01" placeholder="bijv. 4.60">
+      <label>Stake (€)</label>
+      <input type="number" id="stakeX" step="0.01" placeholder="0">
+      <label>Free Bet (€)</label>
+      <input type="number" id="fbX" step="0.01" placeholder="0">
+    </div>
+
+    <div class="card">
+      <h3>Odd 2</h3>
+      <label>Odd</label>
+      <input type="number" id="odd2" step="0.01" placeholder="bijv. 5.60">
+      <label>Stake (€)</label>
+      <input type="number" id="stake2" step="0.01" placeholder="0">
+      <label>Free Bet (€)</label>
+      <input type="number" id="fb2" step="0.01" placeholder="0">
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="btnBalance">Bereken overige stakes</button>
+    <button id="btnReset">Reset</button>
+  </div>
+
+  <div class="results" id="results" style="display:none;">
+    <div class="metrics" id="metrics"></div>
+    <table id="outcomesTbl" style="display:none;">
+      <thead>
+        <tr>
+          <th>Uitkomst</th>
+          <th>Odd</th>
+          <th>Stake</th>
+          <th>Free Bet</th>
+          <th>Payout</th>
+          <th>Winst (cash)</th>
+        </tr>
+      </thead>
+      <tbody id="outcomesBody"></tbody>
+    </table>
+    <div class="foot" id="totalsFoot"></div>
+  </div>
+
+  <script>
+    // Helpers
+    const val = id => parseFloat(document.getElementById(id).value) || 0;
+    const hasVal = id => document.getElementById(id).value.trim() !== "";
+
+    function allOddsFilled(){
+      return hasVal('odd1') && hasVal('oddX') && hasVal('odd2') &&
+             val('odd1')>0 && val('oddX')>0 && val('odd2')>0;
+    }
+
+    function payoutFor(odd, stake, fb){
+      // Reguliere stake: volledige odds * stake
+      // Free bet: stake zelf niet terug → alleen (odd-1)*fb
+      return (odd * stake) + ((odd - 1) * fb);
+    }
+
+    function calcOddsOnlyReturn(){
+      // Theoretische betting return (zonder stakes) zodra 3 odds bekend zijn
+      const o1 = val('odd1'), oX = val('oddX'), o2 = val('odd2');
+      const sumInv = 1/o1 + 1/oX + 1/o2;
+      if(sumInv <= 0) return null;
+      // Return = 100 / (sumInv*100) ⇒ simpelweg 1/sumInv
+      return (1 / sumInv) * 100;
+    }
+
+    function updateUI(){
+      const show = allOddsFilled();
+      const blk = document.getElementById('results');
+      blk.style.display = show ? 'block' : 'none';
+      if(!show) return;
+
+      const o1 = val('odd1'), oX = val('oddX'), o2 = val('odd2');
+      const s1 = val('stake1'), sX = val('stakeX'), s2 = val('stake2');
+      const fb1 = val('fb1'), fbX = val('fbX'), fb2 = val('fb2');
+
+      // Payouts per uitkomst
+      const p1 = payoutFor(o1, s1, fb1);
+      const pX = payoutFor(oX, sX, fbX);
+      const p2 = payoutFor(o2, s2, fb2);
+
+      // Totale inzet:
+      // - Cash outlay = som reguliere stakes
+      // - Free bet waarde telt mee in totale inzet voor "Betting Return (huidige inzet)"
+      const cashTotal = s1 + sX + s2;
+      const fbTotal = fb1 + fbX + fb2;
+      const totalStake = cashTotal + fbTotal;
+
+      // Odds-only betting return (zonder stakes)
+      const oddsOnly = calcOddsOnlyReturn();
+
+      // Huidige inzet metrics (alleen tonen als er iets is ingezet)
+      const anyStake = totalStake > 0.0001;
+
+      // Minimale payout (gegarandeerde uitbetaling)
+      const minPayout = Math.min(p1, pX, p2);
+
+      // Betting Return (huidige inzet) = minPayout / (cash + free bet)
+      const currentReturn = anyStake ? (minPayout / totalStake * 100) : null;
+
+      // Cash-winst per uitkomst = payout - cashTotal (free bet is geen cash-kost)
+      const profit1 = p1 - cashTotal;
+      const profitX = pX - cashTotal;
+      const profit2 = p2 - cashTotal;
+      const minCashProfit = Math.min(profit1, profitX, profit2);
+
+      // Rendement op free bet = min cash-winst / totale free bet
+      const fbYield = fbTotal > 0 ? (minCashProfit / fbTotal * 100) : null;
+
+      // Metrics renderen
+      const m = [];
+      if(oddsOnly !== null){
+        m.push(metric('Betting Return (odds)', oddsOnly.toFixed(2) + '%'));
+      }
+      if(anyStake){
+        m.push(metric('Betting Return (huidige inzet)', currentReturn.toFixed(2) + '%'));
+        if(fbTotal>0){
+          m.push(metric('Rendement Free Bet', fbYield.toFixed(2) + '%'));
+        }
+      }
+      document.getElementById('metrics').innerHTML = m.join('');
+
+      // Uitkomsten-tabel
+      const rows = [
+        row('1', o1, s1, fb1, p1, profit1),
+        row('X', oX, sX, fbX, pX, profitX),
+        row('2', o2, s2, fb2, p2, profit2),
+      ];
+      const tbl = document.getElementById('outcomesTbl');
+      const body = document.getElementById('outcomesBody');
+      body.innerHTML = rows.join('');
+      tbl.style.display = 'table';
+
+      // Totals / footnote
+      document.getElementById('totalsFoot').innerHTML =
+        `Totale cash-inzet: €${cashTotal.toFixed(2)} • Totale free bet: €${fbTotal.toFixed(2)} • `+
+        `Laagste payout: €${minPayout.toFixed(2)} • Min. cash-winst: €${minCashProfit.toFixed(2)}`;
+    }
+
+    function metric(label, value){
+      return `<div class="metric"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+    }
+
+    function row(lbl, odd, stake, fb, payout, profitCash){
+      return `<tr>
+        <td>${lbl}</td>
+        <td>${fmt(odd)}</td>
+        <td>€${fmt(stake)}</td>
+        <td>€${fmt(fb)}</td>
+        <td>€${fmt(payout)}</td>
+        <td>€${fmt(profitCash)}</td>
+      </tr>`;
+    }
+    function fmt(n){
+      return (isFinite(n)? n:0).toFixed(2);
+    }
+
+    function balanceStakes(){
+      if(!allOddsFilled()){
+        alert('Vul eerst alle 3 odds in.');
+        return;
+      }
+      const o = { '1': val('odd1'), 'X': val('oddX'), '2': val('odd2') };
+      const s = { '1': val('stake1'), 'X': val('stakeX'), '2': val('stake2') };
+      const fb= { '1': val('fb1'),    'X': val('fbX'),    '2': val('fb2') };
+
+      // Kies referentie kolom: eerste waar stake+fb > 0
+      const order = ['1','X','2'];
+      let refKey = order.find(k => (s[k] + fb[k]) > 0);
+      if(!refKey){
+        alert('Vul eerst bij één uitkomst een stake of free bet in.');
+        return;
+      }
+
+      // Doel-payout op basis van referentie, rekening houdend met free bet (odd-1)
+      const P = payoutFor(o[refKey], s[refKey], fb[refKey]);
+
+      // Voor elke andere kolom: vind benodigde reguliere stake zodat payout gelijk wordt
+      order.forEach(k=>{
+        if(k === refKey) return;
+        const neededStake = Math.max(0, (P - ((o[k]-1)*fb[k])) / o[k]); // regular stake oplossing
+        if(neededStake >= 0 && !isNaN(neededStake)){
+          document.getElementById(k==='1'?'stake1':k==='X'?'stakeX':'stake2').value = neededStake.toFixed(2);
+        }
+      });
+
+      // Direct updaten
+      updateUI();
+    }
+
+    function resetAll(){
+      ['odd1','oddX','odd2','stake1','stakeX','stake2','fb1','fbX','fb2'].forEach(id=>{
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('results').style.display='none';
+    }
+
+    // Event listeners voor live updates
+    ['odd1','oddX','odd2','stake1','stakeX','stake2','fb1','fbX','fb2'].forEach(id=>{
+      document.getElementById(id).addEventListener('input', updateUI);
+    });
+    document.getElementById('btnBalance').addEventListener('click', balanceStakes);
+    document.getElementById('btnReset').addEventListener('click', resetAll);
+  </script>
+</body>
+</html>
